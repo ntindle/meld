@@ -1,0 +1,38 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-14
+          - target: x86_64-apple-darwin
+            runner: macos-13
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Test
+        run: cargo test --target ${{ matrix.target }}
+      - name: Package
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar -czf meld-${{ matrix.target }}.tar.gz meld
+          shasum -a 256 meld-${{ matrix.target }}.tar.gz > meld-${{ matrix.target }}.tar.gz.sha256
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/${{ matrix.target }}/release/meld-${{ matrix.target }}.tar.gz
+            target/${{ matrix.target }}/release/meld-${{ matrix.target }}.tar.gz.sha256

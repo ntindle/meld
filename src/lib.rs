@@ -1,0 +1,14 @@
+pub mod backup;
+pub mod cli;
+pub mod config;
+pub mod diff;
+pub mod discover;
+pub mod errors;
+pub mod hash;
+pub mod lock;
+pub mod logging;
+pub mod manifest;
+pub mod restore;
+pub mod scan;
+pub mod sync;
+pub mod watch;

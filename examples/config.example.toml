@@ -1,0 +1,16 @@
+# Meld config — copy to ~/.meld/config.toml (or run `meld config init`)
+
+# Parent directory containing one folder per Claude account
+sessions_root = "/Users/YOU/Library/Application Support/Claude/claude-code-sessions"
+
+# Where meld keeps its manifest, backups and lock file
+state_dir = "/Users/YOU/.meld"
+
+# File-watcher debounce in milliseconds
+debounce_ms = 1500
+
+# Keep at most this many snapshots (oldest pruned first)
+max_snapshots = 10
+
+# Basenames to ignore everywhere
+ignore = [".DS_Store"]

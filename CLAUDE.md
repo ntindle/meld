@@ -1,0 +1,41 @@
+# Meld — agent notes
+
+Rust CLI that mirrors Claude Code desktop session JSONs across account trees
+under `~/Library/Application Support/Claude/claude-code-sessions/`.
+Read `context.md` first for current state and decisions.
+
+## Invariants (do not break)
+
+1. Never delete user files — not in sync, not in restore, not in prune of
+   session trees. Only `~/.meld/backups` snapshots may be pruned.
+2. Never overwrite an existing session file. Same relative path + different
+   hash = conflict, surfaced to the user, both variants kept.
+3. Every write is temp-file + fsync + rename (`.meld-tmp` suffix — the
+   watcher ignores that suffix to avoid feedback loops).
+4. `meld sync` snapshots all trees before its first write unless `--no-backup`.
+5. Content decides identity, not folder names. The sync key is the path
+   relative to the account root; equality is sha256.
+
+## Structure
+
+- `src/lib.rs` re-exports all modules so `tests/` can use them.
+- Pipeline: `discover` (account roots) → `scan` (walk+hash, reuses hashes when
+  size+mtime unchanged) → `diff` (union-mirror plan) → `sync` (apply).
+- `watch` re-runs the whole pipeline after a debounced event burst.
+- State in `~/.meld/` (`config.toml`, `manifest.json`, `backups/`, `meld.lock`).
+- No `libc` crate: `lock.rs` and `sync.rs` declare `kill`/`utimes` via
+  `extern "C"` directly (macOS-only assumptions).
+
+## Gotchas
+
+- `scan` skips files modified <2s ago (`WRITE_QUIET_SECS`) — tests must
+  backdate files with `touch -t` or they are invisible to the scanner.
+- Copied files inherit the source mtime so newest-wins stays stable.
+- Manifest is JSON, not SQLite (deliberate: fewer deps, trees are small).
+
+## Commands
+
+`cargo test` runs integration tests on synthetic temp trees (never the real
+sessions folder). `./scripts/smoke-test.sh` builds and end-to-ends against a
+sandbox with `HOME` overridden. Never point tests at the real
+`~/Library/Application Support/Claude` path.

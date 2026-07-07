@@ -1,0 +1,71 @@
+use crate::config::Config;
+use crate::errors::Result;
+use crate::logging;
+use crate::{diff, discover, manifest::Manifest, scan, sync};
+use notify::{RecursiveMode, Watcher};
+use std::sync::mpsc;
+use std::time::Duration;
+
+/// Watch the sessions root (recursively, so brand-new account folders are
+/// picked up too) and run scan+sync after each debounced burst of events.
+pub fn watch(cfg: &Config, dry_run: bool, no_backup: bool) -> Result<()> {
+    let (tx, rx) = mpsc::channel::<()>();
+
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        if let Ok(event) = res {
+            // Ignore our own temp files to avoid feedback loops.
+            let ours = event.paths.iter().all(|p| {
+                p.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e == "meld-tmp" || e == "meld-restore-tmp")
+                    .unwrap_or(false)
+            });
+            if !ours {
+                let _ = tx.send(());
+            }
+        }
+    })?;
+    watcher.watch(&cfg.sessions_root, RecursiveMode::Recursive)?;
+
+    logging::info("Watching your Claude Code sessions. New conversations will be shared across all accounts automatically. Press Ctrl-C to stop.");
+    logging::verbose(&format!(
+        "watching {} (debounce {}ms)",
+        cfg.sessions_root.display(),
+        cfg.debounce_ms
+    ));
+
+    // Initial pass so a fresh `meld watch` converges immediately.
+    run_cycle(cfg, dry_run, no_backup)?;
+
+    loop {
+        // Block until something changes...
+        if rx.recv().is_err() {
+            break;
+        }
+        // ...then drain further events until things go quiet (debounce).
+        while rx
+            .recv_timeout(Duration::from_millis(cfg.debounce_ms))
+            .is_ok()
+        {}
+        if let Err(e) = run_cycle(cfg, dry_run, no_backup) {
+            logging::warn(&format!("sync cycle failed: {e:#}"));
+        }
+    }
+    Ok(())
+}
+
+fn run_cycle(cfg: &Config, dry_run: bool, no_backup: bool) -> Result<()> {
+    let roots = discover::discover_account_roots(cfg)?;
+    let previous = Manifest::load_or_default(&cfg.manifest_path());
+    let m = scan::scan(cfg, &roots, &previous)?;
+    let report = diff::compute(&m);
+    if !report.copies.is_empty() {
+        sync::apply(cfg, &report, &roots, dry_run, no_backup)?;
+        // Rescan after writing so the manifest reflects reality.
+        let m = scan::scan(cfg, &roots, &m)?;
+        m.save(&cfg.manifest_path())?;
+    } else {
+        m.save(&cfg.manifest_path())?;
+    }
+    Ok(())
+}
