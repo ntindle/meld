@@ -12,7 +12,7 @@ trap 'rm -rf "$TMP"' EXIT
 say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
-[ "$(uname -s)" = "Darwin" ] || fail "meld currently supports macOS only"
+[ "$(uname -s)" = "Darwin" ] || fail "this installer is for macOS — on Windows run: irm https://raw.githubusercontent.com/siddhjagani/meld/main/install.ps1 | iex"
 
 case "$(uname -m)" in
   arm64)  TARGET="aarch64-apple-darwin" ;;

@@ -26,7 +26,13 @@ With Homebrew:
 brew install siddhjagani/tap/meld
 ```
 
-Requires macOS. Apple Silicon and Intel are both supported.
+On Windows (PowerShell, no administrator needed):
+
+```powershell
+irm https://raw.githubusercontent.com/siddhjagani/meld/main/install.ps1 | iex
+```
+
+macOS (Apple Silicon and Intel) and Windows are supported.
 
 ## Get started in three commands
 

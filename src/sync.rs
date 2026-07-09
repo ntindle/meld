@@ -137,26 +137,8 @@ pub fn describe(e: &crate::manifest::FileEntry) -> String {
     }
 }
 
-/// Set mtime (and atime) via utimes; best-effort.
+/// Preserve the source mtime on the copy; best-effort.
 fn filetime_set(path: &std::path::Path, mtime: i64) -> Result<()> {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-    let c = CString::new(path.as_os_str().as_bytes())?;
-    let tv = [
-        libc_timeval { tv_sec: mtime, tv_usec: 0 },
-        libc_timeval { tv_sec: mtime, tv_usec: 0 },
-    ];
-    unsafe { libc_utimes(c.as_ptr(), tv.as_ptr()) };
+    filetime::set_file_mtime(path, filetime::FileTime::from_unix_time(mtime, 0))?;
     Ok(())
-}
-
-#[repr(C)]
-struct libc_timeval {
-    tv_sec: i64,
-    tv_usec: i32,
-}
-
-extern "C" {
-    #[link_name = "utimes"]
-    fn libc_utimes(path: *const std::os::raw::c_char, times: *const libc_timeval) -> i32;
 }

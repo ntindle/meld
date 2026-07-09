@@ -46,7 +46,7 @@ pub fn restore(cfg: &Config, name: Option<&str>, dry_run: bool) -> Result<usize>
         let tmp = target.with_extension("meld-restore-tmp");
         std::fs::copy(item.path(), &tmp)
             .with_context(|| format!("restoring {}", target.display()))?;
-        std::fs::rename(&tmp, &target)?;
+        crate::manifest::replace_file(&tmp, &target)?;
         restored += 1;
         logging::verbose(&format!("restored {}", target.display()));
     }

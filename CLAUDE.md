@@ -23,8 +23,11 @@ Read `context.md` first for current state and decisions.
   size+mtime unchanged) → `diff` (union-mirror plan) → `sync` (apply).
 - `watch` re-runs the whole pipeline after a debounced event burst.
 - State in `~/.meld/` (`config.toml`, `manifest.json`, `backups/`, `meld.lock`).
-- No `libc` crate: `lock.rs` and `sync.rs` declare `kill`/`utimes` via
-  `extern "C"` directly (macOS-only assumptions).
+- Cross-platform (macOS + Windows): session-root default is per-OS in
+  `config.rs`; `lock.rs` has cfg(unix)/cfg(windows) process-alive checks
+  (no libc crate — tiny extern shims); mtime preservation uses the
+  `filetime` crate; renames over existing files must go through
+  `manifest::replace_file` (Windows can't rename onto an existing file).
 
 ## Gotchas
 

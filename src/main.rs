@@ -229,8 +229,10 @@ fn doctor(cfg: &Config) -> Result<()> {
                         writable,
                         if writable {
                             "Meld is allowed to read and update your sessions"
-                        } else {
+                        } else if cfg!(target_os = "macos") {
                             "Meld doesn't have permission to update your sessions — check Full Disk Access in System Settings"
+                        } else {
+                            "Meld doesn't have permission to update your sessions — check the folder's permissions"
                         },
                     );
                 }

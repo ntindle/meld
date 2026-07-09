@@ -9,12 +9,22 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
+          # Apple Silicon: build + run tests natively
           - target: aarch64-apple-darwin
-            runner: macos-14
+            runner: macos-latest
+            test: true
+          # Intel mac: cross-compile on the arm64 runner (GitHub retired
+          # Intel macOS runners; queuing for one hangs forever)
           - target: x86_64-apple-darwin
-            runner: macos-13
+            runner: macos-latest
+            test: false
+          # Windows: build + run tests natively
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            test: true
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -24,15 +34,26 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
       - name: Test
-        run: cargo test --target ${{ matrix.target }}
-      - name: Package
+        if: matrix.test
+        run: cargo test --release --target ${{ matrix.target }}
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
         run: |
           cd target/${{ matrix.target }}/release
           tar -czf meld-${{ matrix.target }}.tar.gz meld
           shasum -a 256 meld-${{ matrix.target }}.tar.gz > meld-${{ matrix.target }}.tar.gz.sha256
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd target/${{ matrix.target }}/release
+          Compress-Archive -Path meld.exe -DestinationPath meld-${{ matrix.target }}.zip
+          (Get-FileHash meld-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLower() + "  meld-${{ matrix.target }}.zip" | Out-File -Encoding ascii meld-${{ matrix.target }}.zip.sha256
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             target/${{ matrix.target }}/release/meld-${{ matrix.target }}.tar.gz
             target/${{ matrix.target }}/release/meld-${{ matrix.target }}.tar.gz.sha256
+            target/${{ matrix.target }}/release/meld-${{ matrix.target }}.zip
+            target/${{ matrix.target }}/release/meld-${{ matrix.target }}.zip.sha256

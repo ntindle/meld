@@ -63,13 +63,25 @@ impl Manifest {
         }
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, serde_json::to_string_pretty(self)?)?;
-        std::fs::rename(&tmp, path)
+        replace_file(&tmp, path)
             .with_context(|| format!("renaming {} -> {}", tmp.display(), path.display()))?;
         Ok(())
     }
 
     /// Entries grouped by account root, in the order of `account_roots`.
+
     pub fn entries_for(&self, root: &Path) -> Vec<&FileEntry> {
         self.entries.iter().filter(|e| e.account_root == root).collect()
     }
+}
+
+/// Rename `tmp` over `dest`, replacing it if present. On unix this is a
+/// plain atomic rename; Windows refuses to rename over an existing file,
+/// so the old file is removed first (the data is already safe in `tmp`).
+pub fn replace_file(tmp: &Path, dest: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    if dest.exists() {
+        std::fs::remove_file(dest)?;
+    }
+    std::fs::rename(tmp, dest)
 }

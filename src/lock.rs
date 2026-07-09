@@ -40,16 +40,37 @@ fn lock_is_stale(path: &std::path::Path) -> bool {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return true;
     };
-    let Ok(pid) = raw.trim().parse::<i32>() else {
+    let Ok(pid) = raw.trim().parse::<u32>() else {
         return true;
     };
-    // kill(pid, 0) checks process existence without signaling.
-    unsafe { libc_kill(pid, 0) != 0 }
+    !process_alive(pid)
 }
 
-extern "C" {
-    #[link_name = "kill"]
-    fn libc_kill(pid: i32, sig: i32) -> i32;
+#[cfg(unix)]
+fn process_alive(pid: u32) -> bool {
+    // kill(pid, 0) checks process existence without signaling.
+    extern "C" {
+        #[link_name = "kill"]
+        fn libc_kill(pid: i32, sig: i32) -> i32;
+    }
+    unsafe { libc_kill(pid as i32, 0) == 0 }
+}
+
+#[cfg(windows)]
+fn process_alive(pid: u32) -> bool {
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+    }
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if h.is_null() {
+            return false;
+        }
+        CloseHandle(h);
+        true
+    }
 }
 
 impl Drop for Lock {

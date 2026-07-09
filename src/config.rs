@@ -21,20 +21,41 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let home = home_dir();
         Config {
-            sessions_root: home
-                .join("Library/Application Support/Claude/claude-code-sessions"),
-            state_dir: home.join(".meld"),
+            sessions_root: default_sessions_root(),
+            state_dir: home_dir().join(".meld"),
             debounce_ms: 1500,
             max_snapshots: 10,
-            ignore: vec![".DS_Store".into()],
+            ignore: vec![".DS_Store".into(), "desktop.ini".into(), "Thumbs.db".into()],
         }
     }
 }
 
 pub fn home_dir() -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()))
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+}
+
+/// Platform default for the Claude Code desktop session store.
+fn default_sessions_root() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| home_dir().join("AppData").join("Roaming"))
+            .join("Claude")
+            .join("claude-code-sessions")
+    }
+    #[cfg(target_os = "macos")]
+    {
+        home_dir().join("Library/Application Support/Claude/claude-code-sessions")
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        home_dir().join(".config/Claude/claude-code-sessions")
+    }
 }
 
 pub fn config_path() -> PathBuf {
