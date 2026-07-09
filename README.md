@@ -1,6 +1,12 @@
-# Meld
+<p align="center">
+  <img src="assets/logo.png" alt="Meld logo" width="140">
+</p>
 
-One shared Claude Code chat history across all of your accounts.
+<h1 align="center">Meld</h1>
+
+<p align="center">One shared Claude Code chat history across all of your accounts.</p>
+
+---
 
 If you use Claude Code desktop with more than one account, each account keeps
 its own separate session history on your Mac. Switch accounts and your recent
