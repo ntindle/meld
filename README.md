@@ -23,7 +23,7 @@ uploaded anywhere, nothing is ever deleted, and every change can be undone.
 Recommended:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/siddhjagani/meld/main/install.sh | bash
+curl -fsSL https://meld.dpdns.org/install.sh | bash
 ```
 
 With Homebrew:
@@ -35,7 +35,7 @@ brew install siddhjagani/tap/meld
 On Windows (PowerShell, no administrator needed):
 
 ```powershell
-irm https://raw.githubusercontent.com/siddhjagani/meld/main/install.ps1 | iex
+irm https://meld.dpdns.org/install.ps1 | iex
 ```
 
 macOS (Apple Silicon and Intel) and Windows are supported.
