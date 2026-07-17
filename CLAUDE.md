@@ -15,10 +15,19 @@ Read `context.md` first for current state and decisions.
 4. `meld sync` snapshots all trees before its first write unless `--no-backup`.
 5. Content decides identity, not folder names. The sync key is the path
    relative to the account root; equality is sha256.
+6. Never decrypt Claude's OAuth token or read Keychain secrets to show
+   email/org names. Account identity in output is always an on-disk
+   fingerprint (`src/accounts.rs`), never the real human identity.
 
 ## Structure
 
 - `src/lib.rs` re-exports all modules so `tests/` can use them.
+- Layout is `<account>/<organization>/local_<chat>.json` — one account
+  (login) can nest more than one organization folder. `discover` only sees
+  account roots; `FileEntry::organization()` derives the org from the
+  relative path. `src/accounts.rs` builds the account→org fingerprint used
+  by `meld accounts` and `meld status` (counts, last-active, top cwd paths —
+  never email/org name, see invariant 6).
 - Pipeline: `discover` (account roots) → `scan` (walk+hash, reuses hashes when
   size+mtime unchanged) → `diff` (union-mirror plan) → `sync` (apply).
 - `watch` re-runs the whole pipeline after a debounced event burst.

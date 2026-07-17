@@ -20,6 +20,7 @@ touch -t 202001010000 "$ROOT"/acct-*/ws1/*.json
 echo "== doctor ==";  "$BIN" doctor
 echo "== scan ==";    "$BIN" scan
 echo "== status =="; "$BIN" status
+echo "== accounts =="; "$BIN" accounts
 echo "== diff ==";    "$BIN" diff
 echo "== dry-run =="; "$BIN" sync --dry-run
 test ! -f "$ROOT/acct-a/ws1/local_y.json" || { echo "FAIL: dry-run wrote"; exit 1; }
@@ -27,7 +28,7 @@ echo "== sync ==";    "$BIN" sync
 test -f "$ROOT/acct-a/ws1/local_y.json" || { echo "FAIL: y not mirrored"; exit 1; }
 test -f "$ROOT/acct-b/ws1/local_x.json" || { echo "FAIL: x not mirrored"; exit 1; }
 echo "== idempotency =="
-"$BIN" diff | grep -q "identical" || { echo "FAIL: not idempotent"; exit 1; }
+"$BIN" diff | grep -q "Nothing to sync" || { echo "FAIL: not idempotent"; exit 1; }
 echo "== restore ==";
 echo 'garbage' > "$ROOT/acct-a/ws1/local_x.json"
 "$BIN" restore

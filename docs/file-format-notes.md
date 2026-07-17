@@ -8,11 +8,38 @@ per-workspace layout; the schema is identical across platforms.
 
 ```
 <sessions-root>/
-├─ <account-uuid>/                 # one per signed-in account
+├─ <account-uuid>/                 # one per Claude login (an email/account)
 │  ├─ .DS_Store                    # Finder noise, ignored (macOS)
-│  └─ <workspace-uuid>/            # shared across accounts on one machine
+│  └─ <organization-uuid>/         # a personal space, a team org, etc.
 │     └─ local_<session-uuid>.json # one file per session
 ```
+
+Corrected 2026-07-17: the second level is per-**organization**, not a
+shared "workspace". One account (login) can have more than one organization
+folder nested under it — e.g. a personal space and a team it belongs to —
+or just one. Two accounts can also happen to contain the same organization
+(the org id repeats under each account it's shared with), which is exactly
+the fragmentation meld fixes: `<account>/<org>/<chat>.json` is the sync key,
+and meld mirrors it wherever that org appears.
+
+Confusingly, organization ids and account ids are drawn from the same UUID
+namespace, so an organization id can be identical to some other, unrelated
+account's id purely by coincidence. Confirmed on this machine: one
+account's org folder had the same UUID as a sibling top-level account. This
+does not cause incorrect merging — meld keys off the full relative path
+(`<account>/<org>/<chat>`), never off an org id in isolation — but it can
+look alarming when eyeballing the raw folders. `meld accounts` exists
+specifically so you don't have to eyeball them.
+
+Claude does not expose the human-readable identity (email, organization
+display name, plan) anywhere meld can safely read: the OAuth token is
+Electron `safeStorage`-encrypted with its key in the macOS Keychain, and
+`lastKnownAccountUuid` in `config.json` isn't guaranteed to match any
+session folder at all. Meld will not decrypt that token or touch Keychain
+secrets. Instead it fingerprints each account/org from what's already on
+disk — conversation count, last-active time (max mtime), and the most
+common `cwd` values — good enough to tell folders apart without ever
+handling a credential.
 
 `<sessions-root>` per platform (see `config::default_sessions_root`):
 
@@ -20,8 +47,10 @@ per-workspace layout; the schema is identical across platforms.
 - Windows: `%APPDATA%\Claude\claude-code-sessions`
 - Linux:   `~/.config/Claude/claude-code-sessions` (untested — no Linux desktop)
 
-Observed: 3 account roots, all containing the same workspace uuid; session
-files overlap partially between accounts (the fragmentation meld fixes).
+Observed on this machine: 3 accounts; one of them nests 2 organizations
+(21 and 1 conversations respectively), the other two have 1 organization
+each. Session files overlap partially between accounts sharing an
+organization — the fragmentation meld fixes.
 
 ## Session file schema (top-level keys observed)
 

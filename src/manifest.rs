@@ -27,6 +27,10 @@ pub struct FileEntry {
     /// Conversation title from the session JSON, when present.
     #[serde(default)]
     pub title: Option<String>,
+    /// Working directory of the session, when present (used for the
+    /// account fingerprint since email/org names aren't readable).
+    #[serde(default)]
+    pub cwd: Option<String>,
     /// RFC 3339 timestamp of the scan that last saw this file.
     pub last_seen_at: String,
 }
@@ -72,6 +76,21 @@ impl Manifest {
 
     pub fn entries_for(&self, root: &Path) -> Vec<&FileEntry> {
         self.entries.iter().filter(|e| e.account_root == root).collect()
+    }
+}
+
+impl FileEntry {
+    /// The organization folder this session lives in: the first path
+    /// component below the account root (Claude nests
+    /// `<account>/<organization>/local_<chat>.json`). None if the file sits
+    /// directly under the account root.
+    pub fn organization(&self) -> Option<&str> {
+        self.relative_path
+            .components()
+            .next()
+            .map(|c| c.as_os_str())
+            .and_then(|s| s.to_str())
+            .filter(|_| self.relative_path.components().count() > 1)
     }
 }
 

@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod backup;
 pub mod cli;
 pub mod config;

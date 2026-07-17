@@ -80,7 +80,7 @@ pub fn scan(cfg: &Config, roots: &[PathBuf], previous: &Manifest) -> Result<Mani
                 },
             };
 
-            let (session_id, title) = read_session_meta(path);
+            let meta = read_session_meta(path);
             let content_hash = reused_content_hash
                 .or_else(|| normalized_hash(path))
                 .unwrap_or_else(|| sha256.clone());
@@ -92,8 +92,9 @@ pub fn scan(cfg: &Config, roots: &[PathBuf], previous: &Manifest) -> Result<Mani
                 content_hash,
                 size,
                 mtime,
-                session_id,
-                title,
+                session_id: meta.session_id,
+                title: meta.title,
+                cwd: meta.cwd,
                 last_seen_at: now.to_rfc3339(),
             });
         }
@@ -134,20 +135,31 @@ fn normalized_hash(path: &Path) -> Option<String> {
     Some(format!("{:x}", Sha256::digest(canonical.as_bytes())))
 }
 
-/// Session id and title from JSON content. The id falls back to the
+/// Lightweight session metadata read from the JSON.
+pub struct SessionMeta {
+    pub session_id: Option<String>,
+    pub title: Option<String>,
+    pub cwd: Option<String>,
+}
+
+/// Session id, title and cwd from JSON content. The id falls back to the
 /// `local_<uuid>.json` filename convention when the field is absent.
-pub fn read_session_meta(path: &Path) -> (Option<String>, Option<String>) {
+pub fn read_session_meta(path: &Path) -> SessionMeta {
     let mut id = None;
     let mut title = None;
+    let mut cwd = None;
     if let Ok(raw) = std::fs::read_to_string(path) {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
             id = v.get("sessionId").and_then(|s| s.as_str()).map(String::from);
-            title = v
-                .get("title")
-                .and_then(|s| s.as_str())
-                .map(str::trim)
-                .filter(|t| !t.is_empty())
-                .map(String::from);
+            let str_field = |key: &str| {
+                v.get(key)
+                    .and_then(|s| s.as_str())
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+                    .map(String::from)
+            };
+            title = str_field("title");
+            cwd = str_field("cwd");
         }
     }
     if id.is_none() {
@@ -157,5 +169,5 @@ pub fn read_session_meta(path: &Path) -> (Option<String>, Option<String>) {
             .and_then(|s| s.strip_prefix("local_"))
             .map(String::from);
     }
-    (id, title)
+    SessionMeta { session_id: id, title, cwd }
 }

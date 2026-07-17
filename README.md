@@ -18,6 +18,10 @@ conversations are missing where, and copies them so every account sees the
 same complete history. Everything happens locally on your Mac. Nothing is
 uploaded anywhere, nothing is ever deleted, and every change can be undone.
 
+If an account belongs to more than one organization (for example a personal
+space and a team), meld treats each one as its own history and keeps that
+organization in sync across every account that has it.
+
 ## Install
 
 Recommended:
@@ -78,6 +82,18 @@ meld diff
 
 Lists the exact files a sync would copy, and where they would go.
 
+```bash
+meld accounts
+```
+
+Meld cannot see your email address or organization name — Claude keeps those
+behind an encrypted login token, and meld never touches that. Instead this
+lists every account (and every organization inside it) with what's on disk:
+how many conversations, when it was last active, and which projects it
+worked on. Use it to tell your accounts apart, and to confirm meld found all
+of them — including a single login that belongs to more than one
+organization.
+
 ## Undo a sync
 
 Before meld writes anything, it saves a complete snapshot of all your session
@@ -133,6 +149,7 @@ meld config show     # view current settings
 | `meld sync --dry-run` | Preview a sync without changing anything |
 | `meld watch` | Sync automatically whenever something changes |
 | `meld status` | Show accounts, counts, pending work, conflicts |
+| `meld accounts` | List every account and organization meld found |
 | `meld diff` | List exactly what a sync would copy |
 | `meld backup` | Save a snapshot now |
 | `meld restore` | Roll back to the newest snapshot |

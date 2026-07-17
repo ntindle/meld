@@ -23,6 +23,8 @@ pub struct Cli {
 pub enum Command {
     /// Scan all account trees and rebuild the manifest
     Scan,
+    /// List the Claude accounts and organizations meld found
+    Accounts,
     /// Show account roots, file counts, coverage and conflicts
     Status,
     /// Show per-account differences (what sync would copy)

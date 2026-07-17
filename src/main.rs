@@ -1,4 +1,4 @@
-use meld::{backup, cli, config, diff, discover, errors, lock, logging, manifest, restore, scan, sync, watch};
+use meld::{accounts, backup, cli, config, diff, discover, errors, lock, logging, manifest, restore, scan, sync, watch};
 
 use clap::Parser;
 use cli::{Cli, Command, ConfigAction};
@@ -38,6 +38,10 @@ fn run(cli: Cli) -> Result<()> {
             ));
             logging::verbose(&format!("index saved to {}", cfg.manifest_path().display()));
         }
+        Command::Accounts => {
+            let m = do_scan(&cfg)?;
+            print_accounts(&m);
+        }
         Command::Status => {
             let m = do_scan(&cfg)?;
             let report = diff::compute(&m);
@@ -53,7 +57,7 @@ fn run(cli: Cli) -> Result<()> {
             if cli.json {
                 print_status_json(&m, &report)?;
             } else {
-                print_diff(&m, &report);
+                print_diff(&report);
             }
         }
         Command::Sync { dry_run, no_backup } => {
@@ -93,36 +97,84 @@ fn do_scan(cfg: &Config) -> Result<Manifest> {
 }
 
 /// "Account 2 (bac90339)" — stable, human-scannable account label.
-fn account_label(m: &Manifest, root: &std::path::Path) -> String {
-    let idx = m
-        .account_roots
-        .iter()
-        .position(|r| r == root)
-        .map(|i| i + 1)
-        .unwrap_or(0);
+fn account_label(root: &std::path::Path) -> String {
     let name = root
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("unknown");
-    let short: String = name.chars().take(8).collect();
-    format!("Account {idx} ({short})")
+    format!("Account {}", accounts::short(name))
+}
+
+fn print_accounts(m: &Manifest) {
+    let views = accounts::build(m);
+    let now = chrono::Utc::now().timestamp();
+    let total: usize = views.iter().map(|a| a.conversations).sum();
+    let org_count: usize = views.iter().map(|a| a.orgs.len()).sum();
+
+    println!(
+        "{} across {} — {} in total, all merged together.\n",
+        sync::conversations(total),
+        pluralize(views.len(), "account", "accounts"),
+        pluralize(org_count, "organization", "organizations"),
+    );
+
+    for a in &views {
+        let name = a.root.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+        println!(
+            "Account {} · {} · last active {}",
+            accounts::short(name),
+            sync::conversations(a.conversations),
+            accounts::humanize_age(a.last_active, now),
+        );
+        let n = a.orgs.len();
+        for (i, org) in a.orgs.iter().enumerate() {
+            let branch = if i + 1 == n { "└" } else { "├" };
+            let paths = if org.top_paths.is_empty() {
+                String::new()
+            } else {
+                format!("  ({})", org.top_paths.join(", "))
+            };
+            println!(
+                "  {branch} org {}: {} · {}{}",
+                accounts::short(&org.id),
+                sync::conversations(org.conversations),
+                accounts::humanize_age(org.last_active, now),
+                paths,
+            );
+        }
+        println!();
+    }
+    println!("meld keeps all of these in sync with each other.");
+}
+
+fn pluralize(n: usize, one: &str, many: &str) -> String {
+    if n == 1 {
+        format!("1 {one}")
+    } else {
+        format!("{n} {many}")
+    }
 }
 
 fn print_status(m: &Manifest, report: &diff::DiffReport) {
     let unique: std::collections::BTreeSet<_> =
         m.entries.iter().map(|e| &e.relative_path).collect();
+    let views = accounts::build(m);
+    let org_count: usize = views.iter().map(|a| a.orgs.len()).sum();
     println!(
-        "You have {} across {} accounts.\n",
+        "You have {} across {} ({}).\n",
         sync::conversations(unique.len()),
-        m.account_roots.len()
+        pluralize(views.len(), "account", "accounts"),
+        pluralize(org_count, "organization", "organizations"),
     );
-    for root in &m.account_roots {
-        println!(
-            "  {}: {}",
-            account_label(m, root),
-            sync::conversations(m.entries_for(root).len())
-        );
+    for a in &views {
+        let name = a.root.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+        print!("  {}: {}", accounts::short(name), sync::conversations(a.conversations));
+        if a.orgs.len() > 1 {
+            print!(" across {}", pluralize(a.orgs.len(), "organization", "organizations"));
+        }
+        println!();
     }
+    println!("\n(Run `meld accounts` for more detail on each one.)");
     println!();
     if report.copies.is_empty() {
         println!("All accounts are up to date.");
@@ -149,7 +201,7 @@ fn print_status(m: &Manifest, report: &diff::DiffReport) {
     }
 }
 
-fn print_diff(m: &Manifest, report: &diff::DiffReport) {
+fn print_diff(report: &diff::DiffReport) {
     if report.copies.is_empty() {
         println!("Nothing to sync — every account has the same conversations.");
         return;
@@ -163,7 +215,7 @@ fn print_diff(m: &Manifest, report: &diff::DiffReport) {
     for (dest, copies) in by_dest {
         println!(
             "{} will receive {}:",
-            account_label(m, dest),
+            account_label(dest),
             sync::conversations(copies.len())
         );
         for c in copies {
