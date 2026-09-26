@@ -63,9 +63,33 @@ pub fn cli_sessions_root() -> PathBuf {
     home_dir().join(".claude").join("projects")
 }
 
-/// Candidate session stores, most-preferred first.
+/// Microsoft Store flavor on Windows:
+/// `%LOCALAPPDATA%\Claude-3p\claude-code-sessions`.
+#[cfg(target_os = "windows")]
+pub fn store_sessions_root() -> PathBuf {
+    std::env::var("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| home_dir().join("AppData").join("Local"))
+        .join("Claude-3p")
+        .join("claude-code-sessions")
+}
+
+/// Candidate session stores, most-preferred first. The Store flavor goes
+/// last: its directory can exist with only a stub inside, so it must never
+/// shadow a populated desktop or CLI store.
 pub fn candidate_sessions_roots() -> Vec<PathBuf> {
-    vec![desktop_sessions_root(), cli_sessions_root()]
+    #[cfg(target_os = "windows")]
+    {
+        vec![
+            desktop_sessions_root(),
+            cli_sessions_root(),
+            store_sessions_root(),
+        ]
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        vec![desktop_sessions_root(), cli_sessions_root()]
+    }
 }
 
 /// First candidate that exists on disk; the first candidate when none do,

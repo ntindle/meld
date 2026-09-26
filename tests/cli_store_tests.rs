@@ -97,7 +97,6 @@ fn empty_root_defaults_to_desktop() {
 #[test]
 fn candidates_list_desktop_first_then_cli() {
     let c = config::candidate_sessions_roots();
-    assert_eq!(c.len(), 2);
     assert_eq!(c[0], config::desktop_sessions_root());
     assert_eq!(c[1], config::cli_sessions_root());
     assert_eq!(c[1].file_name().and_then(|n| n.to_str()), Some("projects"));
@@ -107,6 +106,20 @@ fn candidates_list_desktop_first_then_cli() {
             .and_then(|n| n.to_str()),
         Some(".claude")
     );
+    #[cfg(target_os = "windows")]
+    {
+        // The Store flavor exists but never shadows the others.
+        assert_eq!(c.len(), 3);
+        assert_eq!(c[2], config::store_sessions_root());
+        assert_eq!(
+            c[2].file_name().and_then(|n| n.to_str()),
+            Some("claude-code-sessions")
+        );
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        assert_eq!(c.len(), 2);
+    }
 }
 
 #[test]
