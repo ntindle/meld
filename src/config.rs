@@ -39,7 +39,7 @@ pub fn home_dir() -> PathBuf {
 }
 
 /// Platform default for the Claude Code desktop session store.
-fn default_sessions_root() -> PathBuf {
+pub fn desktop_sessions_root() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
         std::env::var("APPDATA")
@@ -56,6 +56,33 @@ fn default_sessions_root() -> PathBuf {
     {
         home_dir().join(".config/Claude/claude-code-sessions")
     }
+}
+
+/// Claude Code CLI session store: `~/.claude/projects` on every platform.
+pub fn cli_sessions_root() -> PathBuf {
+    home_dir().join(".claude").join("projects")
+}
+
+/// Candidate session stores, most-preferred first.
+pub fn candidate_sessions_roots() -> Vec<PathBuf> {
+    vec![desktop_sessions_root(), cli_sessions_root()]
+}
+
+/// First candidate that exists on disk; the first candidate when none do,
+/// so a fresh machine still gets the documented default and a useful error.
+pub fn prefer_existing(candidates: Vec<PathBuf>) -> PathBuf {
+    let fallback = candidates
+        .first()
+        .cloned()
+        .unwrap_or_else(desktop_sessions_root);
+    candidates
+        .into_iter()
+        .find(|p| p.exists())
+        .unwrap_or(fallback)
+}
+
+fn default_sessions_root() -> PathBuf {
+    prefer_existing(candidate_sessions_roots())
 }
 
 pub fn config_path() -> PathBuf {

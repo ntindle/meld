@@ -131,6 +131,16 @@ and snapshots). Your conversations are never moved from their normal
 location. Removing `~/.meld` resets meld completely without touching any of
 your chat history.
 
+## Claude Code CLI histories
+
+Meld also understands the CLI session store (`~/.claude/projects`, one
+folder per project, `.jsonl` transcripts). When the desktop session folder
+isn't present, meld automatically uses the CLI history instead — `meld
+doctor` tells you which store it found. A CLI tree counts as a single
+account, so `scan`, `status`, `diff` and `accounts` work against it
+(`accounts` breaks the history down per project), while `sync` is a no-op
+until a second tree is configured.
+
 ## Settings (optional)
 
 Meld works with zero configuration. If you want to change defaults — for

@@ -10,6 +10,10 @@ pub fn discover_account_roots(cfg: &Config) -> Result<Vec<PathBuf>> {
     if !root.exists() {
         return Err(MeldError::RootNotFound(root.display().to_string()).into());
     }
+    // A CLI tree has no per-account folders: the whole tree is one account.
+    if crate::store::detect_store_kind(root) == crate::store::StoreKind::Cli {
+        return Ok(vec![root.clone()]);
+    }
     let mut roots: Vec<PathBuf> = std::fs::read_dir(root)?
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))

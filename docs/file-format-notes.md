@@ -74,3 +74,41 @@ Single JSON object. Keys seen:
   absence is tolerated.
 - There is a sibling `local-agent-mode-sessions/` folder — intentionally NOT
   synced by meld (out of scope until its semantics are understood).
+
+## CLI session store (added 2026-09-26)
+
+Observed on Windows, Claude Code CLI (no desktop app installed). The CLI
+keeps its history in `~/.claude/projects` on every platform — one folder per
+project, JSONL transcripts instead of single-object JSON:
+
+```
+<projects>/
+└─ <project-slug>/                # cwd with separators flattened to `-`
+   ├─ <session-uuid>.jsonl        # one file per session (JSON lines)
+   └─ <session-uuid>/             # nested transcripts for that session
+      └─ subagents/
+         └─ agent_<id>.jsonl
+```
+
+Notes for meld:
+
+- Session files are `*.jsonl` at any depth; the sync key is the path
+  relative to the projects folder, exactly like the desktop store.
+- The first line of a top-level session carries `sessionId` (matching the
+  filename); subagent transcripts have no `sessionId`, so the id falls back
+  to the filename minus the `agent-` prefix.
+- The tree also contains non-session files that meld must NOT index:
+  `*.meta.json`, `*.forked-skill.json` (agent metadata), plus `memory/`,
+  `plans/` notes and attachments (`.md`, `.txt`, `.pdf`, ...). The scanner
+  therefore filters by extension per store: `.json` for desktop, `.jsonl`
+  for CLI.
+- Transcripts can be huge (168 MB seen, 826 MB total on the observed
+  machine), so metadata is read from the first line only (bounded 64 KiB)
+  and the volatile-key normalization is skipped — CLI identity is exact
+  bytes (sha256).
+- A CLI tree has no per-account folders, so the whole tree counts as one
+  account: scan/status/diff work, and sync is a safe no-op until a second
+  tree is configured. Store detection is content-based (`local_*.json` →
+  desktop, `*.jsonl` → CLI, empty → desktop); see `src/store.rs`.
+- `meld doctor` probes the desktop path first, then `~/.claude/projects`,
+  and reports which store it found.

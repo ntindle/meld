@@ -16,6 +16,14 @@ const WRITE_QUIET_SECS: i64 = 2;
 /// from `previous` when size+mtime are unchanged, so rescans are cheap.
 pub fn scan(cfg: &Config, roots: &[PathBuf], previous: &Manifest) -> Result<Manifest> {
     let now = Utc::now();
+    let kind = crate::store::detect_store_kind(&cfg.sessions_root);
+    // Session files differ per store: single-object JSON for desktop,
+    // JSONL transcripts for CLI. Anything else in the tree (agent
+    // metadata, notes, attachments) is never a session.
+    let want_ext = match kind {
+        crate::store::StoreKind::Desktop => "json",
+        crate::store::StoreKind::Cli => "jsonl",
+    };
     let mut entries = Vec::new();
 
     for root in roots {
@@ -34,7 +42,7 @@ pub fn scan(cfg: &Config, roots: &[PathBuf], previous: &Manifest) -> Result<Mani
             if cfg.is_ignored(path) {
                 continue;
             }
-            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            if path.extension().and_then(|e| e.to_str()) != Some(want_ext) {
                 continue;
             }
             let meta = match item.metadata() {
@@ -74,15 +82,22 @@ pub fn scan(cfg: &Config, roots: &[PathBuf], previous: &Manifest) -> Result<Mani
                 None => match sha256_file(path) {
                     Ok(h) => (h, None),
                     Err(e) => {
-                        logging::warn(&format!("hash failed for {}: {e}", path.display()));
+                        logging::warn(&format!("hash failed for {}: {e:#}", path.display()));
                         continue;
                     }
                 },
             };
 
             let meta = read_session_meta(path);
+            // Volatile-key normalization only applies to single-object
+            // desktop JSON; JSONL transcripts hash by exact bytes.
+            let normalized = if want_ext == "json" {
+                normalized_hash(path)
+            } else {
+                None
+            };
             let content_hash = reused_content_hash
-                .or_else(|| normalized_hash(path))
+                .or(normalized)
                 .unwrap_or_else(|| sha256.clone());
             entries.push(FileEntry {
                 account_root: root.clone(),
@@ -105,6 +120,7 @@ pub fn scan(cfg: &Config, roots: &[PathBuf], previous: &Manifest) -> Result<Mani
         sessions_root: cfg.sessions_root.clone(),
         account_roots: roots.to_vec(),
         entries,
+        store_kind: kind,
     })
 }
 
@@ -136,38 +152,67 @@ fn normalized_hash(path: &Path) -> Option<String> {
 }
 
 /// Lightweight session metadata read from the JSON.
+#[derive(Default)]
 pub struct SessionMeta {
     pub session_id: Option<String>,
     pub title: Option<String>,
     pub cwd: Option<String>,
 }
 
-/// Session id, title and cwd from JSON content. The id falls back to the
-/// `local_<uuid>.json` filename convention when the field is absent.
+/// Session id, title and cwd from JSON content. Desktop files are single
+/// JSON objects and are read whole; JSONL transcripts can be hundreds of
+/// megabytes, so only the first line is parsed (it carries the identifying
+/// fields). The id falls back to the filename — minus the `local_` /
+/// `agent-` prefix conventions — when the field is absent.
 pub fn read_session_meta(path: &Path) -> SessionMeta {
-    let mut id = None;
-    let mut title = None;
-    let mut cwd = None;
-    if let Ok(raw) = std::fs::read_to_string(path) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
-            id = v.get("sessionId").and_then(|s| s.as_str()).map(String::from);
-            let str_field = |key: &str| {
-                v.get(key)
-                    .and_then(|s| s.as_str())
-                    .map(str::trim)
-                    .filter(|t| !t.is_empty())
-                    .map(String::from)
-            };
-            title = str_field("title");
-            cwd = str_field("cwd");
-        }
+    let is_jsonl = path.extension().and_then(|e| e.to_str()) == Some("jsonl");
+    let mut meta = if is_jsonl {
+        read_first_line_json(path)
+            .map(|v| session_meta_from_value(&v))
+            .unwrap_or_default()
+    } else if let Ok(raw) = std::fs::read_to_string(path) {
+        serde_json::from_str::<serde_json::Value>(&raw)
+            .map(|v| session_meta_from_value(&v))
+            .unwrap_or_default()
+    } else {
+        SessionMeta::default()
+    };
+    if meta.session_id.is_none() {
+        meta.session_id = path.file_stem().and_then(|s| s.to_str()).map(|s| {
+            s.strip_prefix("local_")
+                .or_else(|| s.strip_prefix("agent-"))
+                .unwrap_or(s)
+                .to_string()
+        });
     }
-    if id.is_none() {
-        id = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .and_then(|s| s.strip_prefix("local_"))
-            .map(String::from);
+    meta
+}
+
+fn session_meta_from_value(v: &serde_json::Value) -> SessionMeta {
+    let str_field = |key: &str| {
+        v.get(key)
+            .and_then(|s| s.as_str())
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(String::from)
+    };
+    SessionMeta {
+        session_id: v
+            .get("sessionId")
+            .and_then(|s| s.as_str())
+            .map(String::from),
+        title: str_field("title"),
+        cwd: str_field("cwd"),
     }
-    SessionMeta { session_id: id, title, cwd }
+}
+
+/// Parse only the first line of a file as JSON. Bounded: lines past the cap
+/// fail to parse and the caller falls back to the filename.
+fn read_first_line_json(path: &Path) -> Option<serde_json::Value> {
+    use std::io::{BufRead, Read};
+    let file = std::fs::File::open(path).ok()?;
+    let mut reader = std::io::BufReader::new(file.take(64 * 1024));
+    let mut line = String::new();
+    reader.read_line(&mut line).ok()?;
+    serde_json::from_str(line.trim()).ok()
 }

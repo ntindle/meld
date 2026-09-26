@@ -1,4 +1,7 @@
-use meld::{accounts, backup, cli, config, diff, discover, errors, lock, logging, manifest, restore, scan, sync, watch};
+use meld::{
+    accounts, backup, cli, config, diff, discover, errors, lock, logging, manifest, restore, scan,
+    store, sync, watch,
+};
 
 use clap::Parser;
 use cli::{Cli, Command, ConfigAction};
@@ -31,11 +34,20 @@ fn run(cli: Cli) -> Result<()> {
             let m = do_scan(&cfg)?;
             let unique: std::collections::BTreeSet<_> =
                 m.entries.iter().map(|e| &e.relative_path).collect();
-            logging::info(&format!(
-                "Found {} accounts with {}.",
-                m.account_roots.len(),
-                sync::conversations(unique.len())
-            ));
+            if m.store_kind == store::StoreKind::Cli {
+                let projects: usize = accounts::build(&m).iter().map(|a| a.orgs.len()).sum();
+                logging::info(&format!(
+                    "Found {} in {}.",
+                    sync::conversations(unique.len()),
+                    pluralize(projects, "project", "projects")
+                ));
+            } else {
+                logging::info(&format!(
+                    "Found {} with {}.",
+                    pluralize(m.account_roots.len(), "account", "accounts"),
+                    sync::conversations(unique.len())
+                ));
+            }
             logging::verbose(&format!("index saved to {}", cfg.manifest_path().display()));
         }
         Command::Accounts => {
@@ -106,6 +118,10 @@ fn account_label(root: &std::path::Path) -> String {
 }
 
 fn print_accounts(m: &Manifest) {
+    if m.store_kind == store::StoreKind::Cli {
+        print_accounts_cli(m);
+        return;
+    }
     let views = accounts::build(m);
     let now = chrono::Utc::now().timestamp();
     let total: usize = views.iter().map(|a| a.conversations).sum();
@@ -147,6 +163,30 @@ fn print_accounts(m: &Manifest) {
     println!("meld keeps all of these in sync with each other.");
 }
 
+/// CLI detail view: one group per project folder (full slug — the truncated
+/// form is useless since slugs share long prefixes).
+fn print_accounts_cli(m: &Manifest) {
+    let views = accounts::build(m);
+    let now = chrono::Utc::now().timestamp();
+    let total: usize = views.iter().map(|a| a.conversations).sum();
+    let orgs: Vec<&accounts::OrgView> = views.iter().flat_map(|a| a.orgs.iter()).collect();
+
+    println!(
+        "{} in this machine's CLI history, across {}.\n",
+        sync::conversations(total),
+        pluralize(orgs.len(), "project", "projects"),
+    );
+    for o in orgs {
+        println!(
+            "Project {} · {} · last active {}",
+            o.id,
+            sync::conversations(o.conversations),
+            accounts::humanize_age(o.last_active, now),
+        );
+    }
+    println!("\nOnly one session tree is configured, so everything is already in one place.");
+}
+
 fn pluralize(n: usize, one: &str, many: &str) -> String {
     if n == 1 {
         format!("1 {one}")
@@ -156,6 +196,10 @@ fn pluralize(n: usize, one: &str, many: &str) -> String {
 }
 
 fn print_status(m: &Manifest, report: &diff::DiffReport) {
+    if m.store_kind == store::StoreKind::Cli {
+        print_status_cli(m, report);
+        return;
+    }
     let unique: std::collections::BTreeSet<_> =
         m.entries.iter().map(|e| &e.relative_path).collect();
     let views = accounts::build(m);
@@ -176,8 +220,38 @@ fn print_status(m: &Manifest, report: &diff::DiffReport) {
     }
     println!("\n(Run `meld accounts` for more detail on each one.)");
     println!();
+    print_status_tail(report, "All accounts are up to date.");
+}
+
+/// CLI overview: per-project counts (capped — machines accumulate dozens of
+/// project folders) plus the shared sync state.
+fn print_status_cli(m: &Manifest, report: &diff::DiffReport) {
+    let unique: std::collections::BTreeSet<_> =
+        m.entries.iter().map(|e| &e.relative_path).collect();
+    let views = accounts::build(m);
+    let orgs: Vec<&accounts::OrgView> = views.iter().flat_map(|a| a.orgs.iter()).collect();
+    println!(
+        "You have {} in {} on this machine.\n",
+        sync::conversations(unique.len()),
+        pluralize(orgs.len(), "project", "projects"),
+    );
+    for o in orgs.iter().take(10) {
+        println!("  {}: {}", o.id, sync::conversations(o.conversations));
+    }
+    if orgs.len() > 10 {
+        println!("  ... and {} more (see `meld accounts`)", orgs.len() - 10);
+    }
+    println!("\n(Run `meld accounts` for more detail on each one.)");
+    println!();
+    print_status_tail(
+        report,
+        "Only one session tree is configured — nothing to merge.",
+    );
+}
+
+fn print_status_tail(report: &diff::DiffReport, up_to_date: &str) {
     if report.copies.is_empty() {
-        println!("All accounts are up to date.");
+        println!("{up_to_date}");
     } else {
         println!(
             "{} waiting to sync. Run `meld sync` to update all accounts.",
@@ -228,6 +302,7 @@ fn print_diff(report: &diff::DiffReport) {
 fn print_status_json(m: &Manifest, report: &diff::DiffReport) -> Result<()> {
     let out = serde_json::json!({
         "sessions_root": m.sessions_root,
+        "store": m.store_kind,
         "account_roots": m.account_roots,
         "total_files": m.entries.len(),
         "pending_copies": report.copies.iter().map(|c| serde_json::json!({
@@ -251,15 +326,29 @@ fn doctor(cfg: &Config) -> Result<()> {
     };
 
     let found = cfg.sessions_root.exists();
+    let kind = found.then(|| store::detect_store_kind(&cfg.sessions_root));
+    let is_cli = kind == Some(store::StoreKind::Cli);
     ok &= check(
         found,
         if found {
-            "Claude Code is installed and has session data"
+            if is_cli {
+                "Claude Code CLI history found on this machine"
+            } else {
+                "Claude Code is installed and has session data"
+            }
         } else {
-            "Could not find Claude Code session data — is the desktop app installed?"
+            "Could not find Claude Code session data — is Claude Code installed?"
         },
     );
     logging::verbose(&format!("sessions root: {}", cfg.sessions_root.display()));
+    if is_cli {
+        logging::verbose("store type: CLI (JSONL transcripts)");
+    }
+    if !found {
+        for candidate in config::candidate_sessions_roots() {
+            logging::verbose(&format!("checked: {}", candidate.display()));
+        }
+    }
 
     if found {
         match discover::discover_account_roots(cfg) {
@@ -267,7 +356,9 @@ fn doctor(cfg: &Config) -> Result<()> {
                 let n = roots.len();
                 ok &= check(
                     n > 0,
-                    &if n > 0 {
+                    &if is_cli {
+                        "CLI session tree found".into()
+                    } else if n > 0 {
                         format!("{n} account{} found", if n == 1 { "" } else { "s" })
                     } else {
                         "No accounts found yet — sign in to Claude Code first".into()

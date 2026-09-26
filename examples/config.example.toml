@@ -1,6 +1,8 @@
 # Meld config — copy to ~/.meld/config.toml (or run `meld config init`)
 
-# Parent directory containing one folder per Claude account
+# Parent directory containing one folder per Claude account (desktop store).
+# For the Claude Code CLI history instead, point this at ~/.claude/projects:
+# sessions_root = "/Users/YOU/.claude/projects"
 sessions_root = "/Users/YOU/Library/Application Support/Claude/claude-code-sessions"
 
 # Where meld keeps its manifest, backups and lock file

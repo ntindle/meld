@@ -42,6 +42,10 @@ pub struct Manifest {
     pub sessions_root: PathBuf,
     pub account_roots: Vec<PathBuf>,
     pub entries: Vec<FileEntry>,
+    /// Which on-disk layout was scanned. Defaults to desktop so manifests
+    /// written before CLI support existed still load.
+    #[serde(default)]
+    pub store_kind: crate::store::StoreKind,
 }
 
 impl Manifest {
@@ -80,10 +84,12 @@ impl Manifest {
 }
 
 impl FileEntry {
-    /// The organization folder this session lives in: the first path
-    /// component below the account root (Claude nests
-    /// `<account>/<organization>/local_<chat>.json`). None if the file sits
-    /// directly under the account root.
+    /// The group folder this session lives in: the first path component
+    /// below the account root. For the desktop store that is the
+    /// organization (Claude nests
+    /// `<account>/<organization>/local_<chat>.json`); for the CLI store it
+    /// is the project folder. None if the file sits directly under the
+    /// account root.
     pub fn organization(&self) -> Option<&str> {
         self.relative_path
             .components()

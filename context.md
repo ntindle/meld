@@ -1,6 +1,33 @@
 # Meld — working context
 
-Last updated: 2026-07-17
+Last updated: 2026-09-26
+
+## CLI store support (2026-09-26, ntindle/meld fork)
+
+`meld doctor` failed on a Windows machine with only the Claude Code CLI
+installed: the default sessions root (`%APPDATA%\Claude\claude-code-sessions`)
+assumed the desktop app, which was never verified on Windows, and the real
+history lived in `~/.claude/projects/*.jsonl` — a different path,
+extension, layout, and file schema. Fixed by:
+
+- `src/store.rs` (new) — content-based store detection (desktop vs CLI).
+- `config.rs` — candidate session roots; the default is the first store
+  present on disk (desktop preferred, CLI fallback).
+- `discover.rs` — a CLI tree counts as one account (no per-account folders).
+- `scan.rs` — per-store extension filter (`.json` vs `.jsonl`), first-line
+  bounded metadata for JSONL, byte-identity hashing for transcripts.
+- `manifest.rs` — records `store_kind` (old manifests load as desktop).
+- `main.rs` — store-aware `doctor`, `scan`, `status`, `accounts` output.
+- `tests/cli_store_tests.rs` (new) — 13 tests for detection, discovery,
+  scanning, hashing, metadata, and manifest back-compat.
+
+Verified on the real machine: doctor passes, 393 conversations across 72
+projects indexed (2 files unreadable due to foreign ACLs — warned and
+skipped), rescan in 0.2 s via hash reuse. Desktop behavior and output are
+unchanged (existing tests + a scripted desktop sandbox pass).
+
+Open follow-up: multi-tree sync for CLI users (e.g. WSL + Windows trees);
+today a single CLI tree is a safe no-op for `sync`.
 
 ## Current state
 

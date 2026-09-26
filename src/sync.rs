@@ -38,7 +38,7 @@ pub fn apply(
     };
 
     if report.copies.is_empty() {
-        logging::info("All accounts are already up to date.");
+        logging::info("Everything is already up to date.");
         return Ok(out);
     }
 
